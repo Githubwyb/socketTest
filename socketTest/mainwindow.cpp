@@ -102,7 +102,7 @@ int MainWindow::tcpServerConnect() {
         LOG_WARN("TcpServer is null");
         m_pTcpServer = std::make_shared<QTcpServer>();
         QObject::connect(m_pTcpServer.get(), SIGNAL(newConnection()), this, SLOT(tcpServerNewConnect()));
-    } else {
+    } else if (m_pTcpServer->isListening()){
         m_pTcpServer->close();
     }
 
@@ -237,17 +237,32 @@ void MainWindow::on_sendPushButton_clicked()
 {
     switch(ui->socketProtocol->currentIndex()) {
     case 0:
-        if (m_pTcpSocket == nullptr) {
-            LOG_ERROR("TcpSocket is null");
-            break;
+        if (ui->clientTypeComboBox->currentIndex() == 0) {
+            if (m_pTcpSocket == nullptr) {
+                LOG_ERROR("TcpSocket is null");
+                break;
+            } else {
+                QString content = ui->sendTextEdit->toPlainText();
+                m_pTcpSocket->write(content.toLatin1().data(), content.size());
+                m_pTcpSocket->flush();
+                LOG_DEBUG("socket send:");
+                LOG_HEX(content.toLatin1().data(), content.size());
+                ui->recvTextBrowser->append(QString("Send: ") + content);
+            }
         } else {
-            QString content = ui->sendTextEdit->toPlainText();
-            m_pTcpSocket->write(content.toLatin1().data(), content.size());
-            m_pTcpSocket->flush();
-            LOG_DEBUG("socket send:");
-            LOG_HEX(content.toLatin1().data(), content.size());
-            ui->recvTextBrowser->append(QString("Send: ") + content);
+            if (m_pTcpServerSocket == nullptr) {
+                LOG_ERROR("TcpServerSocket is null");
+                break;
+            } else {
+                QString content = ui->sendTextEdit->toPlainText();
+                m_pTcpServerSocket->write(content.toLatin1().data(), content.size());
+                m_pTcpServerSocket->flush();
+                LOG_DEBUG("Server socket send:");
+                LOG_HEX(content.toLatin1().data(), content.size());
+                ui->recvTextBrowser->append(QString("Send: ") + content);
+            }
         }
+
         break;
 
     case 1:
