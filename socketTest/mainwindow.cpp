@@ -35,14 +35,26 @@ void MainWindow::tcpClientReceiveData() {
     //读取缓冲区数据
     buffer = m_pTcpSocket->readAll();
     LOG_HEX(buffer.data(), buffer.size());
-    ui->recvTextBrowser->append(QString("Receive: ") + QString(buffer));
+    ui->recvTextBrowser->append(QString("Receive: ") + QString::fromUtf8(buffer));
 }
 
 void MainWindow::tcpServerDisconnected() {
     LOG_INFO("TcpServer disconnected");
-    ui->connectPushButton->setText("Listen");
     ui->recvTextBrowser->append("!!!TcpServer disconnected!!!\r\n\r\n");
-    m_pTcpServer->deleteLater();
+    if (ui->connectPushButton->text() == "Disconnect") {
+        if (tcpServerConnect() == 0) {
+            ui->connectPushButton->setText("Wait");
+            return;
+        } else {
+            LOG_ERROR("Listen error");
+        }
+    }
+    ui->connectPushButton->setText("Listen");
+    ui->socketProtocol->setEnabled(true);
+    ui->clientTypeComboBox->setEnabled(true);
+    ui->hostLineEdit->setEnabled(false);
+    ui->portSpinBox->setEnabled(true);
+    ui->sendPushButton->setEnabled(false);
 }
 
 void MainWindow::tcpServerReceiveData() {
@@ -50,7 +62,7 @@ void MainWindow::tcpServerReceiveData() {
     //读取缓冲区数据
     buffer = m_pTcpServerSocket->readAll();
     LOG_HEX(buffer.data(), buffer.size());
-    ui->recvTextBrowser->append(QString("Receive: ") + QString(buffer));
+    ui->recvTextBrowser->append(QString("Receive: ") + QString::fromUtf8(buffer));
 }
 
 void MainWindow::tcpServerNewConnect() {
@@ -59,7 +71,7 @@ void MainWindow::tcpServerNewConnect() {
     QObject::connect(m_pTcpServerSocket, SIGNAL(disconnected()), this, SLOT(tcpServerDisconnected()));
     QObject::connect(m_pTcpServerSocket, SIGNAL(readyRead()),this, SLOT(tcpServerReceiveData()));
     ui->connectPushButton->setText("Disconnect");
-    ui->recvTextBrowser->append("!!!TcpServer connect to");
+    ui->recvTextBrowser->append(QString("!!!TcpServer connect to %1:%2; Stop Listen!!!\r\n\r\n").arg(getIpv4Address(m_pTcpServerSocket->peerAddress().toIPv4Address())).arg(m_pTcpServerSocket->peerPort()));
 }
 
 int MainWindow::tcpClientConnect() {
@@ -103,6 +115,7 @@ int MainWindow::tcpServerConnect() {
         m_pTcpServer = std::make_shared<QTcpServer>();
         QObject::connect(m_pTcpServer.get(), SIGNAL(newConnection()), this, SLOT(tcpServerNewConnect()));
     } else if (m_pTcpServer->isListening()){
+        LOG_INFO("Close last listen");
         m_pTcpServer->close();
     }
 
@@ -115,6 +128,14 @@ int MainWindow::tcpServerConnect() {
     LOG_INFO("Listen port %d success", port);
     ui->recvTextBrowser->append(QString("!!!Begin listen to port %1!!!\r\n").arg(port));
     return 0;
+}
+
+QString MainWindow::getIpv4Address(unsigned int ip) {
+    unsigned char d = ip & 0xff;
+    unsigned char c = (ip >> 8) & 0xff;
+    unsigned char b = (ip >> 16) & 0xff;
+    unsigned char a = (ip >> 24) & 0xff;
+    return QString().sprintf("%d.%d.%d.%d", a, b, c, d);
 }
 
 void MainWindow::on_clearRecvPushButton_clicked()
@@ -235,6 +256,8 @@ void MainWindow::on_connectPushButton_clicked()
 
 void MainWindow::on_sendPushButton_clicked()
 {
+    QString content = ui->sendTextEdit->toPlainText();
+    QByteArray sendData = content.toUtf8();
     switch(ui->socketProtocol->currentIndex()) {
     case 0:
         if (ui->clientTypeComboBox->currentIndex() == 0) {
@@ -242,11 +265,10 @@ void MainWindow::on_sendPushButton_clicked()
                 LOG_ERROR("TcpSocket is null");
                 break;
             } else {
-                QString content = ui->sendTextEdit->toPlainText();
-                m_pTcpSocket->write(content.toLatin1().data(), content.size());
+                m_pTcpSocket->write(sendData.data(), sendData.size());
                 m_pTcpSocket->flush();
                 LOG_DEBUG("socket send:");
-                LOG_HEX(content.toLatin1().data(), content.size());
+                LOG_HEX(sendData.data(), sendData.size());
                 ui->recvTextBrowser->append(QString("Send: ") + content);
             }
         } else {
@@ -254,11 +276,10 @@ void MainWindow::on_sendPushButton_clicked()
                 LOG_ERROR("TcpServerSocket is null");
                 break;
             } else {
-                QString content = ui->sendTextEdit->toPlainText();
-                m_pTcpServerSocket->write(content.toLatin1().data(), content.size());
+                m_pTcpServerSocket->write(sendData.data(), sendData.size());
                 m_pTcpServerSocket->flush();
                 LOG_DEBUG("Server socket send:");
-                LOG_HEX(content.toLatin1().data(), content.size());
+                LOG_HEX(sendData.data(), sendData.size());
                 ui->recvTextBrowser->append(QString("Send: ") + content);
             }
         }

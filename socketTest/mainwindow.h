@@ -55,6 +55,13 @@ private:
      */
     int tcpServerConnect();
 
+    /*
+     * @description 从32位解析成ip地址
+     * @param ip ip地址
+     * @return ip字符串
+     */
+    QString getIpv4Address(unsigned int ip);
+
     Ui::MainWindow *ui;
     std::shared_ptr<QTcpSocket> m_pTcpSocket = nullptr;         //tcp客户端连接指针
     std::shared_ptr<QTcpServer> m_pTcpServer = nullptr;         //tcp服务端监听指针
