@@ -205,6 +205,30 @@
      </property>
     </item>
    </widget>
+   <widget class="QSpinBox" name="udpPortSpinBox">
+    <property name="enabled">
+     <bool>false</bool>
+    </property>
+    <property name="geometry">
+     <rect>
+      <x>790</x>
+      <y>130</y>
+      <width>141</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>12</pointsize>
+     </font>
+    </property>
+    <property name="maximum">
+     <number>999999999</number>
+    </property>
+    <property name="value">
+     <number>80</number>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menuBar">
    <property name="geometry">
@@ -212,7 +236,7 @@
      <x>0</x>
      <y>0</y>
      <width>1033</width>
-     <height>21</height>
+     <height>23</height>
     </rect>
    </property>
   </widget>

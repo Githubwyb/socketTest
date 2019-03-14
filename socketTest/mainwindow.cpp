@@ -130,19 +130,23 @@ int MainWindow::tcpServerConnect() {
 }
 
 int MainWindow::udpServerConnect() {
-    int port = ui->portSpinBox->value();
+    int port = ui->udpPortSpinBox->value();
     LOG_INFO("Listen to port %d", port);
 
-    if (m_pUdpServer == nullptr) {
-        LOG_WARN("UdpServer is null");
-        m_pUdpServer = std::make_shared<QUdpSocket>(this);
-        QObject::connect(m_pUdpServer.get(), SIGNAL(readyRead()), this, SLOT(udpServerReceiveData()));
-    } else if (m_pUdpServer->isOpen()) {
+    if (m_pUdpSocket == nullptr) {
+        LOG_ERROR("UdpServer is null");
+        QMessageBox::critical(this, "Error", QString("UdpServer is null"));
+    } else if (m_pUdpSocket->isOpen()) {
         LOG_INFO("Close last listen");
-        m_pUdpServer->close();
+        m_pUdpSocket->close();
     }
 
-    m_pUdpServer->bind(port);
+    if (!m_pUdpSocket->bind(port)) {
+        LOG_ERROR("Open port %d failed", port);
+        QMessageBox::critical(this, "Listen failed", QString("Listen to port %1 failed").arg(port));
+        return -1;
+    }
+
     LOG_INFO("Listen port %d success", port);
     ui->recvTextBrowser->append(QString("!!!Begin listen to port %1!!!\r\n").arg(port));
     return 0;
@@ -150,16 +154,16 @@ int MainWindow::udpServerConnect() {
 
 void MainWindow::udpServerReceiveData() {
     //hasPendingDatagrams返回true时表示至少有一个数据报在等待被读取
-    while(m_pUdpServer->hasPendingDatagrams())
+    while(m_pUdpSocket->hasPendingDatagrams())
     {
         QByteArray datagram;
         //pendingDatagramSize为返回第一个在等待读取报文的size，resize函数是把datagram的size归一化到参数size的大小一样
-        datagram.resize(m_pUdpServer->pendingDatagramSize());
+        datagram.resize(m_pUdpSocket->pendingDatagramSize());
         //将读取到的不大于datagram.size()大小数据输入到datagram.data()中，datagram.data()返回的是一个字节数组中存储
         //数据位置的指针
         QHostAddress host;
         quint16 port = 0;
-        m_pUdpServer->readDatagram(datagram.data(), datagram.size(), &host, &port);
+        m_pUdpSocket->readDatagram(datagram.data(), datagram.size(), &host, &port);
         LOG_HEX(datagram.data(), datagram.size());
         ui->recvTextBrowser->append(QString("Receive from '%1:%2' :    ").arg(getIpv4Address(host.toIPv4Address())).arg(port) + QString::fromUtf8(datagram));
     }
@@ -202,28 +206,7 @@ void MainWindow::on_clientTypeComboBox_currentIndexChanged(int index) {
                 break;
         }
     } else {
-        switch (index) {
-            case 0:
-                LOG_INFO("Udp client");
-                ui->connectPushButton->setText("connect");
-                ui->connectPushButton->setEnabled(false);
-                ui->hostLineEdit->setEnabled(true);
-                ui->sendPushButton->setEnabled(true);
-                break;
-
-            case 1:
-                ui->connectPushButton->setText("Listen");
-                ui->connectPushButton->setEnabled(true);
-                ui->hostLineEdit->setEnabled(false);
-                ui->sendPushButton->setEnabled(false);
-                break;
-
-            default:
-                LOG_ERROR("Invalid index");
-                QMessageBox::critical(this, "Invalid param", QString("Index %1 is invalid").arg(index));
-                ui->clientTypeComboBox->setCurrentIndex(0);
-                break;
-        }
+        LOG_ERROR("Udp has no type");
     }
 }
 
@@ -231,18 +214,27 @@ void MainWindow::on_socketProtocol_currentIndexChanged(int index) {
     LOG_INFO("SocketProtocol currentIndex changed to %d", index);
     switch (index) {
         case 0:
+            if (ui->clientTypeComboBox->currentIndex() == 0) {
+                ui->connectPushButton->setText("Connect");
+            } else {
+                ui->connectPushButton->setText("Listen");
+            }
             ui->connectPushButton->setEnabled(true);
             ui->sendPushButton->setEnabled(false);
+            ui->clientTypeComboBox->setEnabled(true);
+            ui->udpPortSpinBox->setEnabled(false);
             break;
 
         case 1:
-            if (ui->clientTypeComboBox->currentIndex() == 0) {
-                ui->connectPushButton->setEnabled(false);
-                ui->sendPushButton->setEnabled(true);
-            } else {
-                ui->connectPushButton->setEnabled(true);
-                ui->sendPushButton->setEnabled(false);
+            if (m_pUdpSocket == nullptr) {
+                LOG_WARN("UdpServer is null");
+                m_pUdpSocket = std::make_shared<QUdpSocket>(this);
+                QObject::connect(m_pUdpSocket.get(), SIGNAL(readyRead()), this, SLOT(udpServerReceiveData()));
             }
+            ui->connectPushButton->setText("Listen");
+            ui->clientTypeComboBox->setEnabled(false);
+            ui->udpPortSpinBox->setEnabled(true);
+            ui->sendPushButton->setEnabled(true);
             break;
 
         default:
@@ -283,6 +275,9 @@ void MainWindow::on_connectPushButton_clicked() {
                 if (ui->connectPushButton->text() != "Listen") {
                     if (m_pTcpServerSocket != nullptr) {
                         m_pTcpServerSocket->abort();
+                    } else {
+                        QMessageBox::critical(this, "Error", QString("TcpServer is null"));
+                        break;
                     }
                     m_pTcpServer->close();
                     ui->connectPushButton->setText("Listen");
@@ -309,34 +304,26 @@ void MainWindow::on_connectPushButton_clicked() {
             break;
 
         case 1:
-            if (ui->clientTypeComboBox->currentIndex() == 0) {
-                LOG_INFO("Udp client");
-            } else {
-                LOG_INFO("Udp server");
-                if (ui->connectPushButton->text() != "Listen") {
-                    if (m_pUdpServer != nullptr) {
-                        m_pUdpServer->abort();
-                    }
-                    m_pUdpServer->close();
-                    ui->connectPushButton->setText("Listen");
-                    ui->socketProtocol->setDisabled(false);
-                    ui->clientTypeComboBox->setDisabled(false);
-                    ui->hostLineEdit->setEnabled(false);
-                    ui->portSpinBox->setDisabled(false);
-                    ui->sendPushButton->setDisabled(true);
-
-                    ui->recvTextBrowser->append("!!!Stop server!!!\r\n\r\n");
-                    LOG_INFO("Stop server");
+            LOG_INFO("Udp");
+            if (ui->connectPushButton->text() != "Listen") {
+                if (m_pUdpSocket != nullptr) {
+                    m_pUdpSocket->abort();
                 } else {
-                    if (udpServerConnect() == 0) {
-                        ui->connectPushButton->setText("Wait");
-                        ui->socketProtocol->setDisabled(true);
-                        ui->clientTypeComboBox->setDisabled(true);
-                        ui->hostLineEdit->setEnabled(false);
-                        ui->portSpinBox->setDisabled(true);
-                        ui->sendPushButton->setDisabled(false);
-                        LOG_INFO("Begin listen");
-                    }
+                    QMessageBox::critical(this, "Error", QString("UdpServer is null"));
+                    break;
+                }
+                m_pUdpSocket->close();
+                ui->connectPushButton->setText("Listen");
+                ui->socketProtocol->setDisabled(false);
+                ui->udpPortSpinBox->setDisabled(false);
+                ui->recvTextBrowser->append("!!!Stop server!!!\r\n\r\n");
+                LOG_INFO("Stop server");
+            } else {
+                if (udpServerConnect() == 0) {
+                    ui->connectPushButton->setText("Stop");
+                    ui->socketProtocol->setDisabled(true);
+                    ui->udpPortSpinBox->setDisabled(true);
+                    LOG_INFO("Begin listen");
                 }
             }
             break;
@@ -379,9 +366,9 @@ void MainWindow::on_sendPushButton_clicked() {
 
         case 1:
             if (ui->clientTypeComboBox->currentIndex() == 0) {
-                if (m_pUdpClient == nullptr) {
+                if (m_pUdpSocket == nullptr) {
                     LOG_WARN("UdpClient is null");
-                    m_pUdpClient = std::make_shared<QUdpSocket>();
+                    m_pUdpSocket = std::make_shared<QUdpSocket>();
                 }
 
                 QString host = ui->hostLineEdit->text();
@@ -391,7 +378,7 @@ void MainWindow::on_sendPushButton_clicked() {
                 }
                 int port = ui->portSpinBox->value();
 
-                m_pUdpClient->writeDatagram(sendData.data(), sendData.size(), QHostAddress(host), port);
+                m_pUdpSocket->writeDatagram(sendData.data(), sendData.size(), QHostAddress(host), port);
                 LOG_DEBUG("socket send:");
                 LOG_HEX(sendData.data(), sendData.size());
                 ui->recvTextBrowser->append(QString("Send: ") + content);
